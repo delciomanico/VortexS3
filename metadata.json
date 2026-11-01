@@ -1,0 +1,6 @@
+{
+  "name": "VortexS3 - Go Object Storage & Cluster Console",
+  "description": "Servidor de Object Storage em Go compatível com AWS S3, com replicação multi-nó automática, backups programados, console web estilo MinIO e publicação no Docker Hub.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

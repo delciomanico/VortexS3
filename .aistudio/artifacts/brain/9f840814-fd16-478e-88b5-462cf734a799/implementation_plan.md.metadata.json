@@ -1,0 +1,6 @@
+{
+  "summary":  "Plano arquitetural e de implementação do VortexS3: servidor de armazenamento de objetos compatível com S3 escrito em Go, com replicação multi-nó, sistema de backups automatizados, containerização multi-arch para Docker Hub e console web administrativo completo estilo MinIO.",
+  "updatedAt":  "2026-10-29T23:47:00.298066437Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
