@@ -1768,74 +1768,74 @@ CMD ["-data", "/data", "-address", ":9000", "-console-address", ":9001"]
     {
       path: 'docker-compose.yml',
       category: 'docker',
-      description: 'Cluster com 3 nós em alta disponibilidade, replicação mútua e load balancer Nginx',
+      description: 'Padrão de produção para 1 Servidor / VPS (1 nó standalone de alta performance)',
       content: `version: '3.8'
 
+# ==============================================================================
+# VortexS3 - Padrão de Produção para 1 Servidor / VPS (Standalone)
+# Executa 1 nó nativo de alta performance aproveitando 100% dos recursos da máquina.
+# ==============================================================================
+
 services:
-  loadbalancer:
-    image: nginx:alpine
+  vortexs3:
+    image: ${user}/${img}:${ver}
+    container_name: vortexs3
+    restart: unless-stopped
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - vortex-node1
-      - vortex-node2
-      - vortex-node3
-    networks:
-      - storage-net
-
-  vortex-node1:
-    image: ${user}/${img}:${ver}
-    container_name: vortex-node1
+      - "9000:9000"   # API S3 REST (Clientes S3, AWS CLI, SDKs)
+      - "9001:9001"   # Console Web Administrativo
     environment:
-      - VORTEX_NODE_ID=node-1
-      - VORTEX_PEERS=http://vortex-node2:9000,http://vortex-node3:9000
+      - VORTEX_NODE_ID=node-principal
+      - VORTEX_DATA_DIR=/data
       - VORTEX_ROOT_ACCESS_KEY=VXAKIA799PRODROOT
       - VORTEX_ROOT_SECRET_KEY=vxs_wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      # Opcional: Se for conectar esta VPS a outras VPS remotas, informe os IPs das outras máquinas:
+      # - VORTEX_PEERS=http://IP_VPS_2:9000,http://IP_VPS_3:9000
     volumes:
-      - node1_data:/data
-    networks:
-      - storage-net
-    restart: unless-stopped
-
-  vortex-node2:
-    image: ${user}/${img}:${ver}
-    container_name: vortex-node2
-    environment:
-      - VORTEX_NODE_ID=node-2
-      - VORTEX_PEERS=http://vortex-node1:9000,http://vortex-node3:9000
-      - VORTEX_ROOT_ACCESS_KEY=VXAKIA799PRODROOT
-      - VORTEX_ROOT_SECRET_KEY=vxs_wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-    volumes:
-      - node2_data:/data
-    networks:
-      - storage-net
-    restart: unless-stopped
-
-  vortex-node3:
-    image: ${user}/${img}:${ver}
-    container_name: vortex-node3
-    environment:
-      - VORTEX_NODE_ID=node-3
-      - VORTEX_PEERS=http://vortex-node1:9000,http://vortex-node2:9000
-      - VORTEX_ROOT_ACCESS_KEY=VXAKIA799PRODROOT
-      - VORTEX_ROOT_SECRET_KEY=vxs_wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-    volumes:
-      - node3_data:/data
-    networks:
-      - storage-net
-    restart: unless-stopped
+      - vortex_storage:/data
 
 volumes:
-  node1_data:
-  node2_data:
-  node3_data:
+  vortex_storage:
+    driver: local
+`,
+    },
+    {
+      path: 'deploy/docker-compose.multi-server.yml',
+      category: 'docker',
+      description: 'Guia de implantação em cluster com múltiplos servidores físicos / VPS independentes',
+      content: `# ==============================================================================
+# VortexS3 - Cluster Distribuído Multi-Servidor (Cross-VPS / Multi-Cloud)
+# ==============================================================================
+# Cada VPS executa APENAS 1 NÓ, utilizando 100% dos seus recursos físicos de CPU/Disco.
+# Os nós se comunicam via rede privada (VPC/Wireguard) ou IPs públicos.
+# ==============================================================================
 
-networks:
-  storage-net:
-    driver: bridge
+# Na VPS 1 (ex: IP 198.51.100.10):
+# services:
+#   vortex-node1:
+#     image: ${user}/${img}:${ver}
+#     ports: ["9000:9000", "9001:9001"]
+#     environment:
+#       - VORTEX_NODE_ID=vps-sp-1
+#       - VORTEX_PEERS=http://198.51.100.20:9000,http://198.51.100.30:9000
+
+# Na VPS 2 (ex: IP 198.51.100.20):
+# services:
+#   vortex-node2:
+#     image: ${user}/${img}:${ver}
+#     ports: ["9000:9000", "9001:9001"]
+#     environment:
+#       - VORTEX_NODE_ID=vps-ny-2
+#       - VORTEX_PEERS=http://198.51.100.10:9000,http://198.51.100.30:9000
+
+# Na VPS 3 (ex: IP 198.51.100.30):
+# services:
+#   vortex-node3:
+#     image: ${user}/${img}:${ver}
+#     ports: ["9000:9000", "9001:9001"]
+#     environment:
+#       - VORTEX_NODE_ID=vps-fra-3
+#       - VORTEX_PEERS=http://198.51.100.10:9000,http://198.51.100.20:9000
 `,
     },
     {
@@ -1909,32 +1909,140 @@ Substituto moderno, leve (<25MB) e de alta performance ao MinIO, desenvolvido em
 - 🕒 **Políticas de Ciclo de Vida (S3 Lifecycle)**: expiração automática de objetos e arquivos temporários, transição para GLACIER e cancelamento de partes multipart incompletas.
 - 🔔 **Notificação de Eventos & Webhooks**: alertas HTTP POST em tempo real para \`s3:ObjectCreated:*\` e \`s3:ObjectRemoved:*\`.
 - 🐳 **Pronto para Docker Hub**: imagem multi-arquitetura (\`linux/amd64\`, \`linux/arm64\`) com binário estático Go compilado sem CGO sobre Alpine Linux.
+- 🛡️ **Pronto para Produção**: arquivos pré-configurados de Nginx SSL, Systemd, Docker Compose HA e GitHub Actions CI/CD incluídos no diretório \`deploy/\`.
+`,
+    },
+    {
+      path: 'deploy/nginx/vortexs3.conf',
+      category: 'docker',
+      description: 'Configuração Nginx de Produção com SSL e streaming sem buffer de 100GB',
+      content: `upstream vortex_api {
+    server 127.0.0.1:9000;
+    keepalive 64;
+}
 
----
+server {
+    listen 443 ssl http2;
+    server_name s3.seudominio.com;
 
-## Restauração de Backups (Disaster Recovery)
+    ssl_certificate /etc/letsencrypt/live/s3.seudominio.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/s3.seudominio.com/privkey.pem;
 
-Para restaurar um snapshot em uma nova máquina ou container:
+    client_max_body_size 100G;
+    proxy_buffering off;
+    proxy_request_buffering off;
 
-\`\`\`bash
-# Modo 1: Na inicialização do container
-docker run -d \\
-  -p 9000:9000 -p 9001:9001 \\
-  -v /var/data/storage:/data \\
-  -e VORTEX_RESTORE_FILE=/data/backups/snapshot.tar.gz \\
-  ${user}/${img}:latest
+    location / {
+        proxy_pass http://vortex_api;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+`,
+    },
+    {
+      path: 'deploy/systemd/vortexs3.service',
+      category: 'docker',
+      description: 'Unidade Linux Systemd para execução direta em bare-metal / VPS',
+      content: `[Unit]
+Description=VortexS3 Distributed Object Storage Engine
+After=network.target
 
-# Modo 2: Via binário Go diretamente
-./vortexs3 -data /data -restore /caminho/do/snapshot.tar.gz
-\`\`\`
+[Service]
+Type=simple
+User=vortexs3
+Group=vortexs3
+WorkingDirectory=/var/lib/vortexs3
+ExecStart=/usr/local/bin/vortexs3 -data /var/lib/vortexs3/data -address :9000 -console-address :9001
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+ProtectSystem=full
 
----
+[Install]
+WantedBy=multi-user.target
+`,
+    },
+    {
+      path: 'deploy/docker-compose.prod.yml',
+      category: 'docker',
+      description: 'Cluster Docker Compose HA de 3 Nós com Traefik e Let\'s Encrypt automático',
+      content: `version: '3.8'
 
-## Como publicar no Docker Hub
+services:
+  traefik:
+    image: traefik:v3.1
+    ports: ["80:80", "443:443"]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro", "traefik_certs:/letsencrypt"]
+    command:
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=admin@seudominio.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
 
-\`\`\`bash
-./scripts/publish-dockerhub.sh ${user} ${img} ${ver}
-\`\`\`
+  vortex-node1:
+    image: ${user}/${img}:latest
+    environment:
+      - VORTEX_NODE_ID=node-1
+      - VORTEX_DATA_DIR=/data
+      - VORTEX_PEERS=http://vortex-node2:9000,http://vortex-node3:9000
+    volumes: [node1_storage:/data]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.s3.rule=Host(\`s3.seudominio.com\`)"
+      - "traefik.http.routers.s3.tls.certresolver=myresolver"
+      - "traefik.http.services.s3.loadbalancer.server.port=9000"
+
+  vortex-node2:
+    image: ${user}/${img}:latest
+    environment:
+      - VORTEX_NODE_ID=node-2
+      - VORTEX_DATA_DIR=/data
+      - VORTEX_PEERS=http://vortex-node1:9000,http://vortex-node3:9000
+    volumes: [node2_storage:/data]
+
+  vortex-node3:
+    image: ${user}/${img}:latest
+    environment:
+      - VORTEX_NODE_ID=node-3
+      - VORTEX_DATA_DIR=/data
+      - VORTEX_PEERS=http://vortex-node1:9000,http://vortex-node2:9000
+    volumes: [node3_storage:/data]
+
+volumes: { traefik_certs: {}, node1_storage: {}, node2_storage: {}, node3_storage: {} }
+`,
+    },
+    {
+      path: '.github/workflows/docker-publish.yml',
+      category: 'docker',
+      description: 'Pipeline CI/CD do GitHub Actions para publicação multi-arch no Docker Hub',
+      content: `name: Build & Publish VortexS3
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ 'v*.*.*' ]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: \${{ secrets.DOCKERHUB_USERNAME }}
+          password: \${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${user}/${img}:latest
 `,
     },
   ];

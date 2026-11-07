@@ -120,30 +120,42 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
 
           <div className="divide-y divide-zinc-800/60">
-            {buckets.map(b => (
-              <div
-                key={b.id}
-                onClick={() => onNavigate('buckets')}
-                className="py-2.5 px-2 flex items-center justify-between hover:bg-zinc-800/40 rounded-lg transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Database className="w-4 h-4 text-zinc-500" />
-                  <div>
-                    <span className="text-xs font-mono font-medium text-zinc-200 block">
-                      {b.name}
-                    </span>
-                    <span className="text-[11px] text-zinc-500 font-mono">
-                      {b.region} · {b.publicAccess === 'private' ? 'Privado' : 'Público'}
-                    </span>
+            {buckets.length === 0 ? (
+              <div className="py-8 text-center text-xs text-zinc-500">
+                <p>Nenhum bucket criado ainda.</p>
+                <button
+                  onClick={onCreateBucket}
+                  className="mt-2 text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer inline-flex items-center gap-1"
+                >
+                  + Criar Primeiro Bucket
+                </button>
+              </div>
+            ) : (
+              buckets.map(b => (
+                <div
+                  key={b.id}
+                  onClick={() => onNavigate('buckets')}
+                  className="py-2.5 px-2 flex items-center justify-between hover:bg-zinc-800/40 rounded-lg transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Database className="w-4 h-4 text-zinc-500" />
+                    <div>
+                      <span className="text-xs font-mono font-medium text-zinc-200 block">
+                        {b.name}
+                      </span>
+                      <span className="text-[11px] text-zinc-500 font-mono">
+                        {b.region} · {b.publicAccess === 'private' ? 'Privado' : 'Público'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-right font-mono text-xs text-zinc-400">
+                    <div className="text-zinc-200">{formatSize(b.sizeBytes)}</div>
+                    <div className="text-[11px] text-zinc-500">{b.objectCount} itens</div>
                   </div>
                 </div>
-
-                <div className="text-right font-mono text-xs text-zinc-400">
-                  <div className="text-zinc-200">{formatSize(b.sizeBytes)}</div>
-                  <div className="text-[11px] text-zinc-500">{b.objectCount} itens</div>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

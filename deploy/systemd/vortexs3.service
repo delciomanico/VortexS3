@@ -1,0 +1,17 @@
+[Unit]
+Description=VortexS3 Distributed Object Storage Engine
+After=network.target
+
+[Service]
+Type=simple
+User=vortexs3
+Group=vortexs3
+WorkingDirectory=/var/lib/vortexs3
+ExecStart=/usr/local/bin/vortexs3 -data /var/lib/vortexs3/data -address :9000 -console-address :9001
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

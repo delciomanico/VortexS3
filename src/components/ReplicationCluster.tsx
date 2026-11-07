@@ -38,6 +38,7 @@ export const ReplicationCluster: React.FC<ReplicationClusterProps> = ({
   const [scrubMessage, setScrubMessage] = useState<string | null>(null);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [nodeActionError, setNodeActionError] = useState<string | null>(null);
+  const [nodeToRemove, setNodeToRemove] = useState<{ id: string; name: string } | null>(null);
 
   const metrics = storageEngine.getMetrics();
 
@@ -86,13 +87,17 @@ export const ReplicationCluster: React.FC<ReplicationClusterProps> = ({
 
   const handleRemoveNode = (nodeId: string, nodeName: string) => {
     setNodeActionError(null);
-    if (!window.confirm(`Tem certeza que deseja desconectar e desprovisionar o nó "${nodeName}" deste cluster?`)) {
-      return;
-    }
+    setNodeToRemove({ id: nodeId, name: nodeName });
+  };
+
+  const confirmRemoveNode = () => {
+    if (!nodeToRemove) return;
     try {
-      replicationEngine.removeNode(nodeId);
+      replicationEngine.removeNode(nodeToRemove.id);
+      setNodeToRemove(null);
     } catch (err: any) {
       setNodeActionError(err?.message || 'Erro ao desconectar nó.');
+      setNodeToRemove(null);
     }
   };
 
@@ -107,21 +112,32 @@ export const ReplicationCluster: React.FC<ReplicationClusterProps> = ({
         <div>
           <h2 className="text-sm font-bold text-zinc-100 font-mono uppercase tracking-wider flex items-center gap-2">
             <Server className="w-4 h-4 text-emerald-400" />
-            <span>Nós do Cluster S3 & Topologia Multi-Servidor</span>
+            <span>Nós do Cluster S3 & Topologia Multi-VPS</span>
           </h2>
           <span className="text-xs text-zinc-500 font-mono">
-            Conexão entre diferentes servidores físicos, VPS cloud, quorum Raft e Reed-Solomon (4+2)
+            Arquitetura padrão de 1 nó por máquina física/VPS. Adicione réplicas apontando para outras VPSs.
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setIsConnectModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-950 bg-emerald-400 hover:bg-emerald-300 rounded-lg transition-colors cursor-pointer shadow-sm shadow-emerald-500/20"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Conectar Nó Remoto</span>
+            <span>+ Conectar Outra VPS (Nova Réplica)</span>
           </button>
+
+          {nodes.length > 1 && (
+            <button
+              onClick={() => replicationEngine.resetToSingleLocalNode()}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-800/80 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer border border-zinc-700"
+              title="Retornar para o padrão de 1 nó único nesta VPS"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+              <span>Redefinir para 1 Nó</span>
+            </button>
+          )}
 
           <button
             onClick={handleManualSync}
@@ -143,12 +159,57 @@ export const ReplicationCluster: React.FC<ReplicationClusterProps> = ({
         </div>
       )}
 
+      {/* Standalone vs Cluster Topology Status Card */}
+      {nodes.length === 1 ? (
+        <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-emerald-300 font-mono">Modo 1 Nó por VPS Ativo (Padrão de Produção)</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">
+                  LÍDER LOCAL
+                </span>
+              </div>
+              <p className="text-zinc-400 text-[11px] mt-1 leading-relaxed">
+                Esta VPS executa o nó principal com 100% de performance dos discos locais (sem containers duplicados competindo por I/O). Para criar réplicas redundantes em outras máquinas físicas ou na nuvem, use o botão <strong>"+ Conectar Outra VPS"</strong> acima.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsConnectModalOpen(true)}
+            className="shrink-0 px-3 py-1.5 text-xs font-semibold text-emerald-400 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-800/80 rounded-lg transition-colors cursor-pointer"
+          >
+            Adicionar 2ª VPS
+          </button>
+        </div>
+      ) : (
+        <div className="bg-blue-950/20 border border-blue-500/30 rounded-xl p-4 flex items-start gap-3 text-xs">
+          <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0 mt-0.5">
+            <Network className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-blue-300 font-mono">Cluster Multi-Servidor Ativo ({nodes.length} VPSs Conectadas)</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800/60">
+                RAFT CONVERGIDO
+              </span>
+            </div>
+            <p className="text-zinc-400 text-[11px] mt-1 leading-relaxed">
+              O quórum distribuído está sincronizando uploads em tempo real entre servidores físicos remotos via mTLS e distribuindo shards Reed-Solomon.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Multi-Server Topology Summary Banner */}
       <div className="bg-[#171717] border border-zinc-800 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
         <div className="p-2.5 bg-[#121212] rounded-lg border border-zinc-800/80">
           <span className="text-zinc-500 text-[10px] uppercase block font-sans">Servidores no Cluster</span>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-zinc-100 font-bold font-mono text-sm">{nodes.length} nós</span>
+            <span className="text-zinc-100 font-bold font-mono text-sm">{nodes.length} {nodes.length === 1 ? 'VPS' : 'VPSs'}</span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
               {onlineNodesCount} online
             </span>
@@ -158,7 +219,7 @@ export const ReplicationCluster: React.FC<ReplicationClusterProps> = ({
         <div className="p-2.5 bg-[#121212] rounded-lg border border-zinc-800/80">
           <span className="text-zinc-500 text-[10px] uppercase block font-sans">Quorum Raft / Consenso</span>
           <span className="text-emerald-400 font-bold font-mono text-xs mt-1 block">
-            {onlineNodesCount >= Math.floor(nodes.length / 2) + 1 ? 'Líder Ativo (Quorum OK)' : 'Degradado (Sem Quorum)'}
+            {nodes.length === 1 ? 'Líder Autônomo (1 VPS)' : onlineNodesCount >= Math.floor(nodes.length / 2) + 1 ? 'Líder Ativo (Quorum OK)' : 'Degradado (Sem Quorum)'}
           </span>
         </div>
 
@@ -172,7 +233,7 @@ export const ReplicationCluster: React.FC<ReplicationClusterProps> = ({
         <div className="p-2.5 bg-[#121212] rounded-lg border border-zinc-800/80">
           <span className="text-zinc-500 text-[10px] uppercase block font-sans">Distribuição Geográfica</span>
           <span className="text-zinc-300 font-mono text-xs mt-1 block truncate">
-            {Array.from(new Set(nodes.map(n => n.region || 'local'))).length} regiões ativas
+            {Array.from(new Set(nodes.map(n => n.region || 'local'))).length} {Array.from(new Set(nodes.map(n => n.region || 'local'))).length === 1 ? 'região' : 'regiões'}
           </span>
         </div>
       </div>
@@ -280,8 +341,8 @@ export const ReplicationCluster: React.FC<ReplicationClusterProps> = ({
                   <div className="flex items-center gap-2">
                     <Server className={`w-4 h-4 ${isOffline ? 'text-red-400' : 'text-emerald-400'}`} />
                     <div>
-                      <div className="text-xs font-bold text-zinc-200 font-mono flex items-center gap-1.5">
-                        <span>{node.name.split(' ')[0]}</span>
+                      <div className="text-xs font-bold text-zinc-200 font-mono flex items-center gap-1.5 flex-wrap">
+                        <span>{node.name}</span>
                         {isLeader && (
                           <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-1.5 py-0.2 rounded font-sans font-semibold">
                             LÍDER
@@ -451,6 +512,34 @@ export const ReplicationCluster: React.FC<ReplicationClusterProps> = ({
         isOpen={isConnectModalOpen}
         onClose={() => setIsConnectModalOpen(false)}
       />
+
+      {/* Confirmation Modal for Node Disconnect */}
+      {nodeToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#171717] border border-zinc-800 rounded-xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <h3 className="text-sm font-semibold text-zinc-100">Desconectar Servidor do Cluster</h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Tem certeza que deseja desconectar e desprovisionar o nó <strong className="text-zinc-200">"{nodeToRemove.name}"</strong> deste cluster?
+            </p>
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setNodeToRemove(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveNode}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors cursor-pointer shadow-sm"
+              >
+                Desconectar Nó
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

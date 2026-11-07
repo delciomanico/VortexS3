@@ -24,6 +24,7 @@ export const AccessKeysManager: React.FC<AccessKeysManagerProps> = ({
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
   const [activeTabSnippet, setActiveTabSnippet] = useState<'awscli' | 'boto3' | 'nodejs'>('awscli');
+  const [keyToDelete, setKeyToDelete] = useState<IAMAccessKey | null>(null);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -131,10 +132,9 @@ console.log(res.Buckets);`,
                 </td>
                 <td className="py-3 px-4 text-right">
                   <button
-                    onClick={() => {
-                      if (confirm(`Revogar chave ${k.name}?`)) storageEngine.deleteAccessKey(k.id);
-                    }}
-                    className="text-zinc-500 hover:text-red-400 p-1 cursor-pointer"
+                    onClick={() => setKeyToDelete(k)}
+                    className="text-zinc-500 hover:text-red-400 p-1 cursor-pointer transition-colors"
+                    title="Revogar chave"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -168,6 +168,37 @@ console.log(res.Buckets);`,
           <code>{snippets[activeTabSnippet]}</code>
         </pre>
       </div>
+
+      {/* Confirmation Modal */}
+      {keyToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#171717] border border-zinc-800 rounded-xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <h3 className="text-sm font-semibold text-zinc-100">Revogar Chave de API</h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Tem certeza que deseja revogar permanentemente a chave <strong className="text-zinc-200">"{keyToDelete.name}"</strong>? Qualquer aplicação conectada com esta credencial perderá o acesso.
+            </p>
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setKeyToDelete(null)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  storageEngine.deleteAccessKey(keyToDelete.id);
+                  setKeyToDelete(null);
+                }}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors cursor-pointer shadow-sm"
+              >
+                Revogar Chave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

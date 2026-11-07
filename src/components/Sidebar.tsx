@@ -14,6 +14,7 @@ import {
   Activity,
   CheckCircle2,
   BookOpen,
+  ShieldCheck,
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
 import { AdminUser } from '../services/authService';
@@ -43,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'metrics', label: 'Métricas & K8s', icon: <Activity className="w-4 h-4" /> },
     { id: 'logs', label: 'Logs de Acesso', icon: <Terminal className="w-4 h-4" /> },
     { id: 'iam', label: 'Credenciais API', icon: <KeyRound className="w-4 h-4" /> },
+    { id: 'production', label: 'Prontidão & Produção', icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />, badge: 'Deploy' },
     { id: 'dockerhub', label: 'Docker Hub & Go', icon: <Box className="w-4 h-4" /> },
     { id: 'docs', label: 'Documentação', icon: <BookOpen className="w-4 h-4" /> },
   ];
@@ -128,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {currentUser?.name || 'Administrador'}
             </span>
             <span className="text-[10px] text-zinc-500 font-mono block truncate">
-              {currentUser?.email || 'admin@vortexs3.io'}
+              {currentUser?.email || ''}
             </span>
           </div>
         </div>

@@ -12,22 +12,69 @@ import { AccessKeysManager } from './components/AccessKeysManager';
 import { AccessLogsView } from './components/AccessLogsView';
 import { DockerHubExporter } from './components/DockerHubExporter';
 import { PrometheusMetricsView } from './components/PrometheusMetricsView';
+import { ProductionCenter } from './components/ProductionCenter';
 import { SystemDocsView } from './components/SystemDocsView';
 
 import { CreateBucketModal } from './components/modals/CreateBucketModal';
 import { UploadObjectModal } from './components/modals/UploadObjectModal';
 import { PresignedUrlModal } from './components/modals/PresignedUrlModal';
+import { PublicUrlModal } from './components/modals/PublicUrlModal';
 import { ObjectDetailModal } from './components/modals/ObjectDetailModal';
 import { CreateAccessKeyModal } from './components/modals/CreateAccessKeyModal';
 import { CreateBackupPolicyModal } from './components/modals/CreateBackupPolicyModal';
 import { RestoreBackupModal } from './components/modals/RestoreBackupModal';
 import { LifecycleRuleModal } from './components/modals/LifecycleRuleModal';
 import { WebhookNotificationModal } from './components/modals/WebhookNotificationModal';
+import { PublicObjectView } from './components/PublicObjectView';
 
 import { storageEngine } from './services/storageEngine';
 import { replicationEngine } from './services/replicationEngine';
 import { backupEngine } from './services/backupEngine';
 import { authService, AdminUser } from './services/authService';
+
+interface PublicRouteTarget {
+  bucket: string;
+  key: string;
+  hasSig: boolean;
+}
+
+const parsePublicRoute = (): PublicRouteTarget | null => {
+  if (typeof window === 'undefined') return null;
+
+  // 1. Check Search Parameters (e.g. ?public_bucket=foo&public_key=bar or ?b=foo&k=bar)
+  const params = new URLSearchParams(window.location.search);
+  const pb = params.get('public_bucket') || params.get('b');
+  const pk = params.get('public_key') || params.get('k');
+  const hasSig = !!(params.get('X-Amz-Signature') || params.get('sig'));
+
+  if (pb && pk) {
+    return { bucket: pb, key: decodeURIComponent(pk), hasSig };
+  }
+
+  // 2. Check Pathname (e.g. /s3/bucket/key... or /public/bucket/key...)
+  const pathname = window.location.pathname;
+  const matchPath = pathname.match(/^\/(?:s3|public|share)\/([^/]+)\/(.+)$/);
+  if (matchPath) {
+    return {
+      bucket: decodeURIComponent(matchPath[1]),
+      key: decodeURIComponent(matchPath[2]),
+      hasSig,
+    };
+  }
+
+  // 3. Check Hash (e.g. #/s3/bucket/key... or #s3/bucket/key...)
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  const matchHash = hash.match(/^(?:s3|public|share)\/([^/]+)\/(.+)$/);
+  if (matchHash) {
+    return {
+      bucket: decodeURIComponent(matchHash[1]),
+      key: decodeURIComponent(matchHash[2]),
+      hasSig,
+    };
+  }
+
+  return null;
+};
 
 import {
   Bucket,
@@ -57,12 +104,17 @@ export default function App() {
 
   const [selectedBucketName, setSelectedBucketName] = useState<string>('');
 
+  // Public Object View route state (accessible to anyone with link)
+  const [publicTarget, setPublicTarget] = useState<PublicRouteTarget | null>(() => parsePublicRoute());
+
   // Modals state
   const [isCreateBucketOpen, setIsCreateBucketOpen] = useState(false);
   const [isUploadObjectOpen, setIsUploadObjectOpen] = useState(false);
   const [targetUploadBucket, setTargetUploadBucket] = useState('');
   const [isPresignedOpen, setIsPresignedOpen] = useState(false);
   const [presignedTargetObj, setPresignedTargetObj] = useState<StorageObject | null>(null);
+  const [isPublicUrlOpen, setIsPublicUrlOpen] = useState(false);
+  const [publicUrlTargetObj, setPublicUrlTargetObj] = useState<StorageObject | null>(null);
   const [isObjectDetailOpen, setIsObjectDetailOpen] = useState(false);
   const [detailTargetObj, setDetailTargetObj] = useState<StorageObject | null>(null);
   const [isCreateKeyOpen, setIsCreateKeyOpen] = useState(false);
@@ -82,11 +134,27 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  useEffect(() => {
+    const handleUrlChange = () => {
+      setPublicTarget(parsePublicRoute());
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
   const refreshAll = () => {
     const b = storageEngine.getBuckets();
     setBuckets(b);
-    if (!selectedBucketName && b.length > 0) {
-      setSelectedBucketName(b[0].name);
+    if (b.length > 0) {
+      if (!selectedBucketName || !b.some(bk => bk.name === selectedBucketName)) {
+        setSelectedBucketName(b[0].name);
+      }
+    } else {
+      setSelectedBucketName('');
     }
     const allObjs = b.flatMap(bucket => storageEngine.getObjects(bucket.name));
     setObjects(allObjs);
@@ -100,6 +168,13 @@ export default function App() {
     setBackupJobs(backupEngine.getJobs());
     setBackupArchives(backupEngine.getArchives());
   };
+
+  useEffect(() => {
+    storageEngine.setUser(currentUser);
+    replicationEngine.setUser(currentUser);
+    backupEngine.setUser(currentUser);
+    refreshAll();
+  }, [currentUser]);
 
   useEffect(() => {
     refreshAll();
@@ -118,14 +193,22 @@ export default function App() {
     };
   }, [selectedBucketName]);
 
-  const handleOpenUpload = (bucketName: string) => {
+  const [uploadPrefix, setUploadPrefix] = useState('');
+
+  const handleOpenUpload = (bucketName: string, prefix = '') => {
     setTargetUploadBucket(bucketName);
+    setUploadPrefix(prefix);
     setIsUploadObjectOpen(true);
   };
 
   const handleOpenPresigned = (obj: StorageObject) => {
     setPresignedTargetObj(obj);
     setIsPresignedOpen(true);
+  };
+
+  const handleOpenPublicUrl = (obj: StorageObject) => {
+    setPublicUrlTargetObj(obj);
+    setIsPublicUrlOpen(true);
   };
 
   const handleOpenDetail = (obj: StorageObject) => {
@@ -165,9 +248,36 @@ export default function App() {
     showToast(`Restauração concluída! ${summary.restoredObjectsCount} objetos e ${summary.restoredBucketsCount} buckets recuperados.`);
   };
 
+  // Public Object View: Anyone with the link can access directly without logging in
+  if (publicTarget) {
+    return (
+      <PublicObjectView
+        bucketName={publicTarget.bucket}
+        objectKey={publicTarget.key}
+        hasPresignedSignature={publicTarget.hasSig}
+        onGoToAdmin={() => {
+          setPublicTarget(null);
+          const cleanUrl = window.location.origin + (window.location.pathname.startsWith('/s3') ? '/' : window.location.pathname);
+          window.history.pushState({}, '', cleanUrl);
+        }}
+      />
+    );
+  }
+
   // If not logged in, render AuthScreen (Login/Signup)
   if (!currentUser) {
-    return <AuthScreen onSuccess={(user) => { setCurrentUser(user); refreshAll(); }} />;
+    return (
+      <AuthScreen
+        onSuccess={(user) => {
+          storageEngine.setUser(user);
+          replicationEngine.setUser(user);
+          backupEngine.setUser(user);
+          setCurrentUser(user);
+          refreshAll();
+          showToast(`Sessão iniciada como ${user.name}`);
+        }}
+      />
+    );
   }
 
   return (
@@ -179,6 +289,9 @@ export default function App() {
         currentUser={currentUser}
         onLogout={() => {
           authService.logout();
+          storageEngine.setUser(null);
+          replicationEngine.setUser(null);
+          backupEngine.setUser(null);
           setCurrentUser(null);
         }}
         clusterHealth={metrics.clusterHealth}
@@ -217,6 +330,7 @@ export default function App() {
               onOpenUploadModal={handleOpenUpload}
               onOpenCreateBucketModal={() => setIsCreateBucketOpen(true)}
               onOpenPresignedModal={handleOpenPresigned}
+              onOpenPublicUrlModal={handleOpenPublicUrl}
               onOpenObjectDetailModal={handleOpenDetail}
               onOpenLifecycleModal={handleOpenLifecycle}
               onOpenWebhookModal={handleOpenWebhook}
@@ -259,6 +373,16 @@ export default function App() {
             <PrometheusMetricsView metrics={metrics} />
           )}
 
+          {activeTab === 'production' && (
+            <ProductionCenter
+              metrics={metrics}
+              buckets={buckets}
+              objects={objects}
+              nodes={nodes}
+              onNavigate={setActiveTab}
+            />
+          )}
+
           {activeTab === 'dockerhub' && (
             <DockerHubExporter />
           )}
@@ -291,7 +415,8 @@ export default function App() {
       <UploadObjectModal
         isOpen={isUploadObjectOpen}
         onClose={() => setIsUploadObjectOpen(false)}
-        bucketName={targetUploadBucket || selectedBucketName || 'production-media'}
+        bucketName={targetUploadBucket || selectedBucketName || ''}
+        initialPrefix={uploadPrefix}
         onObjectUploaded={(obj) => {
           refreshAll();
           showToast(`Objeto "${obj.key}" enviado.`);
@@ -307,6 +432,16 @@ export default function App() {
         object={presignedTargetObj}
       />
 
+      <PublicUrlModal
+        isOpen={isPublicUrlOpen}
+        onClose={() => {
+          setIsPublicUrlOpen(false);
+          setPublicUrlTargetObj(null);
+        }}
+        object={publicUrlTargetObj}
+        onBucketAccessChanged={refreshAll}
+      />
+
       <ObjectDetailModal
         isOpen={isObjectDetailOpen}
         onClose={() => {
@@ -315,6 +450,7 @@ export default function App() {
         }}
         object={detailTargetObj}
         onPresignedUrlClick={handleOpenPresigned}
+        onPublicUrlClick={handleOpenPublicUrl}
       />
 
       <CreateAccessKeyModal

@@ -1,0 +1,30 @@
+version: '3.8'
+
+# ==============================================================================
+# VortexS3 - Padrão de Produção para 1 Servidor / VPS (Standalone)
+# Executa 1 nó nativo de alta performance aproveitando 100% dos recursos da máquina.
+# ==============================================================================
+
+services:
+  vortexs3:
+    image: delciomanico2003/vortexs3:latest
+    container_name: vortexs3
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # API S3 REST (Clientes S3, AWS CLI, SDKs)
+      - "9001:9001"   # Console Web Administrativo
+    environment:
+      - VORTEX_NODE_ID=node-principal
+      - VORTEX_DATA_DIR=/data
+      - VORTEX_ROOT_ACCESS_KEY=VXAKIA799PRODROOT
+      - VORTEX_ROOT_SECRET_KEY=vxs_wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      # Opcional: Se for conectar esta VPS a outras VPS remotas, informe os IPs das outras máquinas:
+      # - VORTEX_PEERS=http://IP_VPS_2:9000,http://IP_VPS_3:9000
+    volumes:
+      - vortex_storage:/data
+      # Ou mapeie diretamente um diretório físico do disco/NVMe:
+      # - /var/data/storage:/data
+
+volumes:
+  vortex_storage:
+    driver: local

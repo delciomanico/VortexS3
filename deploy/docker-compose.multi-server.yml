@@ -1,0 +1,72 @@
+# ==============================================================================
+# VortexS3 - Cluster Distribuído Multi-Servidor (Cross-VPS / Multi-Cloud)
+# ==============================================================================
+# Cada VPS executa APENAS 1 NÓ, utilizando 100% dos seus recursos físicos de CPU/Disco.
+# Os nós se comunicam via rede privada (VPC/Tailscale/Wireguard) ou IPs públicos seguros.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# CONFIGURAÇÃO PARA EXECUTAR NO SERVIDOR 1 (VPS 1 - ex: IP 198.51.100.10)
+# Arquivo: docker-compose.yml na VPS 1
+# ------------------------------------------------------------------------------
+# version: '3.8'
+# services:
+#   vortex-node1:
+#     image: delciomanico2003/vortexs3:latest
+#     container_name: vortexs3
+#     restart: unless-stopped
+#     ports:
+#       - "9000:9000"
+#       - "9001:9001"
+#     environment:
+#       - VORTEX_NODE_ID=vps-sp-1
+#       - VORTEX_DATA_DIR=/data
+#       - VORTEX_ROOT_ACCESS_KEY=VXAKIA799PRODROOT
+#       - VORTEX_ROOT_SECRET_KEY=vxs_wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY
+#       - VORTEX_PEERS=http://198.51.100.20:9000,http://198.51.100.30:9000
+#     volumes:
+#       - /var/data/storage:/data
+
+# ------------------------------------------------------------------------------
+# CONFIGURAÇÃO PARA EXECUTAR NO SERVIDOR 2 (VPS 2 - ex: IP 198.51.100.20)
+# Arquivo: docker-compose.yml na VPS 2
+# ------------------------------------------------------------------------------
+# version: '3.8'
+# services:
+#   vortex-node2:
+#     image: delciomanico2003/vortexs3:latest
+#     container_name: vortexs3
+#     restart: unless-stopped
+#     ports:
+#       - "9000:9000"
+#       - "9001:9001"
+#     environment:
+#       - VORTEX_NODE_ID=vps-ny-2
+#       - VORTEX_DATA_DIR=/data
+#       - VORTEX_ROOT_ACCESS_KEY=VXAKIA799PRODROOT
+#       - VORTEX_ROOT_SECRET_KEY=vxs_wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY
+#       - VORTEX_PEERS=http://198.51.100.10:9000,http://198.51.100.30:9000
+#     volumes:
+#       - /var/data/storage:/data
+
+# ------------------------------------------------------------------------------
+# CONFIGURAÇÃO PARA EXECUTAR NO SERVIDOR 3 (VPS 3 - ex: IP 198.51.100.30)
+# Arquivo: docker-compose.yml na VPS 3
+# ------------------------------------------------------------------------------
+# version: '3.8'
+# services:
+#   vortex-node3:
+#     image: delciomanico2003/vortexs3:latest
+#     container_name: vortexs3
+#     restart: unless-stopped
+#     ports:
+#       - "9000:9000"
+#       - "9001:9001"
+#     environment:
+#       - VORTEX_NODE_ID=vps-fra-3
+#       - VORTEX_DATA_DIR=/data
+#       - VORTEX_ROOT_ACCESS_KEY=VXAKIA799PRODROOT
+#       - VORTEX_ROOT_SECRET_KEY=vxs_wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY
+#       - VORTEX_PEERS=http://198.51.100.10:9000,http://198.51.100.20:9000
+#     volumes:
+#       - /var/data/storage:/data

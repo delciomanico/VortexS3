@@ -1,4 +1,5 @@
 import { ClusterNode, ReplicationEvent } from '../types/storage';
+import { AdminUser, authService } from './authService';
 
 const REPLICATION_STORAGE_KEYS = {
   NODES: 'vortexs3_nodes_v1',
@@ -7,55 +8,21 @@ const REPLICATION_STORAGE_KEYS = {
 
 const INITIAL_NODES: ClusterNode[] = [
   {
-    id: 'node-1',
-    name: 'vortex-node-1 (Principal)',
-    endpoint: 'http://node1.cluster.local:9000',
+    id: 'node-local',
+    name: 'Nó Desta VPS (Principal)',
+    endpoint: 'http://localhost:9000',
     role: 'leader',
     status: 'online',
-    latencyMs: 1.2,
+    latencyMs: 0.5,
     diskTotalBytes: 500000000000, // 500 GB
-    diskUsedBytes: 258350000,
-    replicatedObjectsCount: 9,
+    diskUsedBytes: 125000000,
+    replicatedObjectsCount: 0,
     lastHeartbeat: new Date().toISOString(),
     replicationQueueLength: 0,
-    ipAddress: '10.0.1.10',
-    serverLocation: 'Datacenter SP-01 (Principal)',
-    region: 'sa-east-1',
+    ipAddress: '127.0.0.1 (Esta VPS)',
+    serverLocation: 'Servidor Local (Líder Raft)',
+    region: 'local',
     tlsEnabled: false,
-  },
-  {
-    id: 'node-2',
-    name: 'vortex-node-2 (Réplica A)',
-    endpoint: 'http://node2.cluster.local:9000',
-    role: 'follower',
-    status: 'online',
-    latencyMs: 8.4,
-    diskTotalBytes: 500000000000,
-    diskUsedBytes: 258350000,
-    replicatedObjectsCount: 9,
-    lastHeartbeat: new Date().toISOString(),
-    replicationQueueLength: 0,
-    ipAddress: '10.0.1.11',
-    serverLocation: 'AWS us-east-1 (Servidor Remoto)',
-    region: 'us-east-1',
-    tlsEnabled: false,
-  },
-  {
-    id: 'node-3',
-    name: 'vortex-node-3 (Réplica B)',
-    endpoint: 'http://node3.cluster.local:9000',
-    role: 'follower',
-    status: 'online',
-    latencyMs: 12.1,
-    diskTotalBytes: 500000000000,
-    diskUsedBytes: 258350000,
-    replicatedObjectsCount: 9,
-    lastHeartbeat: new Date().toISOString(),
-    replicationQueueLength: 0,
-    ipAddress: '10.0.1.12',
-    serverLocation: 'Baremetal OVH FRA (Servidor Remoto)',
-    region: 'eu-west-1',
-    tlsEnabled: true,
   },
 ];
 
@@ -115,28 +82,86 @@ class ReplicationEngine {
   private events: ReplicationEvent[] = [];
   private listeners: (() => void)[] = [];
   private pendingQueueByNode: Record<string, { bucket: string; key: string; size: number }[]> = {};
+  private currentUser: AdminUser | null = null;
 
   constructor() {
+    this.currentUser = authService.getCurrentUser();
     this.loadState();
     this.startHeartbeatSimulator();
   }
 
+  public setUser(user: AdminUser | null) {
+    this.currentUser = user;
+    this.loadState();
+    this.notify();
+  }
+
+  private getKey(name: string): string {
+    const uid = this.currentUser?.id || 'guest';
+    return `vortexs3_repl_${uid}_${name}_v2`;
+  }
+
+  private createDefaultLocalNode(): ClusterNode {
+    return {
+      id: `node-${this.currentUser?.id || 'local'}-1`,
+      name: 'Nó Desta VPS (Principal)',
+      endpoint: 'http://localhost:9000',
+      role: 'leader',
+      status: 'online',
+      latencyMs: 0.5,
+      diskTotalBytes: 500000000000,
+      diskUsedBytes: 0,
+      replicatedObjectsCount: 0,
+      lastHeartbeat: new Date().toISOString(),
+      replicationQueueLength: 0,
+      ipAddress: '127.0.0.1 (Esta VPS)',
+      serverLocation: 'Servidor Local (Líder Raft)',
+      region: 'local',
+      tlsEnabled: false,
+    };
+  }
+
   private loadState() {
     try {
-      const storedNodes = localStorage.getItem(REPLICATION_STORAGE_KEYS.NODES);
-      const storedEvents = localStorage.getItem(REPLICATION_STORAGE_KEYS.EVENTS);
-      this.nodes = storedNodes ? JSON.parse(storedNodes) : INITIAL_NODES;
-      this.events = storedEvents ? JSON.parse(storedEvents) : INITIAL_EVENTS;
+      const defaultNode = this.createDefaultLocalNode();
+      const storedNodes = localStorage.getItem(this.getKey('nodes'));
+      const storedEvents = localStorage.getItem(this.getKey('events'));
+
+      if (storedNodes) {
+        const parsed = JSON.parse(storedNodes);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Remove legacy 3-container-same-VPS mocks
+          const cleaned = parsed.filter((n: ClusterNode) => 
+            !n.endpoint?.includes('cluster.local') && n.id !== 'node-2' && n.id !== 'node-3'
+          );
+          this.nodes = cleaned.length > 0 ? cleaned : [defaultNode];
+        } else {
+          this.nodes = [defaultNode];
+        }
+      } else {
+        this.nodes = [defaultNode];
+      }
+      this.events = storedEvents ? JSON.parse(storedEvents) : [];
     } catch {
-      this.nodes = INITIAL_NODES;
-      this.events = INITIAL_EVENTS;
+      this.nodes = [this.createDefaultLocalNode()];
+      this.events = [];
     }
+  }
+
+  public resetToSingleLocalNode() {
+    this.nodes = [this.createDefaultLocalNode()];
+    this.events = [];
+    this.persist();
+  }
+
+  public loadDemoNodes() {
+    this.resetToSingleLocalNode();
   }
 
   private persist() {
     try {
-      localStorage.setItem(REPLICATION_STORAGE_KEYS.NODES, JSON.stringify(this.nodes));
-      localStorage.setItem(REPLICATION_STORAGE_KEYS.EVENTS, JSON.stringify(this.events));
+      localStorage.setItem(this.getKey('nodes'), JSON.stringify(this.nodes));
+      localStorage.setItem(this.getKey('events'), JSON.stringify(this.events));
     } catch (e) {
       console.warn('Could not persist replication state', e);
     }
@@ -170,19 +195,25 @@ class ReplicationEngine {
     clusterEndpoint: string;
   } {
     const leader = this.nodes.find(n => n.role === 'leader') || this.nodes[0];
-    const clusterEndpoint = leader?.endpoint || 'http://10.0.1.10:9000';
+    const currentHost = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+      ? window.location.hostname
+      : 'IP_DESTA_VPS_1';
+    const clusterEndpoint = leader?.endpoint && !leader.endpoint.includes('localhost') && !leader.endpoint.includes('127.0.0.1')
+      ? leader.endpoint
+      : `http://${currentHost}:9000`;
     const token = `vxtk_${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`;
     const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
 
     const joinCommand = `vortexs3 node join --cluster-token "${token}" --peer "${clusterEndpoint}" --listen "0.0.0.0:9000"`;
-    const dockerCommand = `docker run -d --name vortexs3-node \\
+    const dockerCommand = `# Execute este comando no terminal da 2ª VPS (Servidor Réplica):
+docker run -d --name vortexs3-node-replica \\
   --restart always \\
-  -p 9000:9000 \\
+  -p 9000:9000 -p 9001:9001 \\
   -v /data/vortexs3:/data \\
   -e VORTEX_CLUSTER_TOKEN="${token}" \\
   -e VORTEX_PEER_ENDPOINTS="${clusterEndpoint}" \\
   -e VORTEX_NODE_ROLE="follower" \\
-  vortexs3/vortexs3:latest`;
+  ghcr.io/vortexs3/vortexs3:latest`;
 
     return { token, expiresAt, joinCommand, dockerCommand, clusterEndpoint };
   }

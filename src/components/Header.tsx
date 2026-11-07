@@ -22,7 +22,9 @@ export const Header: React.FC<HeaderProps> = ({
       case 'logs': return 'Logs de Acesso S3';
       case 'iam': return 'Credenciais API & Chaves IAM';
       case 'metrics': return 'Métricas Prometheus & Kubernetes';
+      case 'production': return 'Centro de Prontidão & Produção';
       case 'dockerhub': return 'Docker Hub & Código Go';
+      case 'docs': return 'Documentação Técnica';
       default: return '';
     }
   };

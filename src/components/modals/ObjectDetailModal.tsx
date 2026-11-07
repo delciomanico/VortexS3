@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   ShieldAlert,
   ShieldCheck,
+  Globe,
 } from 'lucide-react';
 import { StorageObject } from '../../types/storage';
 import { storageEngine } from '../../services/storageEngine';
@@ -20,6 +21,7 @@ interface ObjectDetailModalProps {
   onClose: () => void;
   object: StorageObject | null;
   onPresignedUrlClick: (obj: StorageObject) => void;
+  onPublicUrlClick?: (obj: StorageObject) => void;
 }
 
 export const ObjectDetailModal: React.FC<ObjectDetailModalProps> = ({
@@ -27,6 +29,7 @@ export const ObjectDetailModal: React.FC<ObjectDetailModalProps> = ({
   onClose,
   object,
   onPresignedUrlClick,
+  onPublicUrlClick,
 }) => {
   const [copiedUri, setCopiedUri] = useState(false);
   const [copiedEtag, setCopiedEtag] = useState(false);
@@ -243,15 +246,30 @@ export const ObjectDetailModal: React.FC<ObjectDetailModalProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
-            <button
-              onClick={() => {
-                onClose();
-                onPresignedUrlClick(object);
-              }}
-              className="px-3 py-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer"
-            >
-              Presigned URL
-            </button>
+            <div className="flex items-center gap-2">
+              {onPublicUrlClick && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onPublicUrlClick(object);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>URL Pública</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  onClose();
+                  onPresignedUrlClick(object);
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg transition-colors cursor-pointer"
+              >
+                Presigned URL
+              </button>
+            </div>
 
             <div className="flex items-center gap-2">
               <button

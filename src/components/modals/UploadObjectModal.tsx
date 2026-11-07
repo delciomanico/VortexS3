@@ -8,6 +8,7 @@ interface UploadObjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   bucketName: string;
+  initialPrefix?: string;
   onObjectUploaded: (obj: StorageObject) => void;
 }
 
@@ -15,10 +16,11 @@ export const UploadObjectModal: React.FC<UploadObjectModalProps> = ({
   isOpen,
   onClose,
   bucketName,
+  initialPrefix = '',
   onObjectUploaded,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [prefix, setPrefix] = useState('');
+  const [prefix, setPrefix] = useState(initialPrefix);
   const [customKey, setCustomKey] = useState('');
   const [metadataItems, setMetadataItems] = useState<{ key: string; val: string }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -93,10 +95,7 @@ export const UploadObjectModal: React.FC<UploadObjectModalProps> = ({
 
       // Dispara replicação no cluster
       replicationEngine.handleObjectPut(bucketName, finalKey, obj.sizeBytes);
-
-      setTimeout(() => {
-        storageEngine.updateObjectReplicationStatus(obj.id, 'synced');
-      }, 1500);
+      storageEngine.updateObjectReplicationStatus(obj.id, 'synced');
 
       onObjectUploaded(obj);
       onClose();

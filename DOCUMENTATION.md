@@ -59,80 +59,65 @@ docker run -d --name vortexs3-node-follower \\
 
 ---
 
+---
+
 ## 4. Guias de Implantação em Produção
 
-### 4.1. Implantação com Docker Compose (Cluster de 3 Nós)
+### 4.1. Implantação Padrão (1 Servidor / VPS - Standalone de Alta Performance)
 
-\`\`\`yaml
+Em uma VPS ou servidor dedicado único, **o padrão correto é executar 1 único nó do VortexS3**. Subir múltiplos nós na mesma VPS consome CPU e memória desnecessariamente, cria contenção no mesmo disco físico e **não oferece alta disponibilidade real** (se a VPS cair ou reiniciar, todos os nós caem juntos).
+
+O arquivo `docker-compose.yml` padrão para uma VPS é simples, direto e de altíssima vazão:
+
+```yaml
 version: '3.8'
 
 services:
-  vortex-node1:
-    image: vortexs3/vortexs3-server:latest
-    container_name: vortex-node1
-    restart: always
-    environment:
-      - VORTEX_NODE_ID=node-1
-      - VORTEX_PORT=9000
-      - VORTEX_CONSOLE_PORT=9001
-      - VORTEX_RAFT_PORT=9002
-      - VORTEX_ROOT_USER=admin
-      - VORTEX_ROOT_PASSWORD=DefinaSuaSenhaForteAqui!
-      - VORTEX_STORAGE_PATH=/data
-      - VORTEX_CLUSTER_PEERS=node-1:9002,node-2:9002,node-3:9002
+  vortexs3:
+    image: delciomanico2003/vortexs3:latest
+    container_name: vortexs3
+    restart: unless-stopped
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - node1_data:/data
-    networks:
-      - vortex_net
-
-  vortex-node2:
-    image: vortexs3/vortexs3-server:latest
-    container_name: vortex-node2
-    restart: always
+      - "9000:9000"   # API S3 REST
+      - "9001:9001"   # Console Web Administrativo
     environment:
-      - VORTEX_NODE_ID=node-2
-      - VORTEX_PORT=9000
-      - VORTEX_CONSOLE_PORT=9001
-      - VORTEX_RAFT_PORT=9002
-      - VORTEX_ROOT_USER=admin
-      - VORTEX_ROOT_PASSWORD=DefinaSuaSenhaForteAqui!
-      - VORTEX_STORAGE_PATH=/data
-      - VORTEX_CLUSTER_PEERS=node-1:9002,node-2:9002,node-3:9002
+      - VORTEX_NODE_ID=node-principal
+      - VORTEX_DATA_DIR=/data
+      - VORTEX_ROOT_ACCESS_KEY=VXAKIA799PRODROOT
+      - VORTEX_ROOT_SECRET_KEY=vxs_wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY
     volumes:
-      - node2_data:/data
-    networks:
-      - vortex_net
-
-  vortex-node3:
-    image: vortexs3/vortexs3-server:latest
-    container_name: vortex-node3
-    restart: always
-    environment:
-      - VORTEX_NODE_ID=node-3
-      - VORTEX_PORT=9000
-      - VORTEX_CONSOLE_PORT=9001
-      - VORTEX_RAFT_PORT=9002
-      - VORTEX_ROOT_USER=admin
-      - VORTEX_ROOT_PASSWORD=DefinaSuaSenhaForteAqui!
-      - VORTEX_STORAGE_PATH=/data
-      - VORTEX_CLUSTER_PEERS=node-1:9002,node-2:9002,node-3:9002
-    volumes:
-      - node3_data:/data
-    networks:
-      - vortex_net
+      - vortex_storage:/data
 
 volumes:
-  node1_data:
-  node2_data:
-  node3_data:
+  vortex_storage:
+    driver: local
+```
 
-networks:
-  vortex_net:
-    driver: bridge
-\`\`\`
+### 4.2. Implantação em Cluster Multi-Servidor (Cross-VPS / Multi-Cloud)
+
+Se você possui 3 VPS separadas (ex: 3 instâncias em provedores ou datacenters diferentes), **cada VPS executa 1 único nó**, e elas se comunicam via rede interna/privada ou Wireguard:
+
+- **VPS 1 (IP `198.51.100.10`)**:
+  ```yaml
+  environment:
+    - VORTEX_NODE_ID=vps-1
+    - VORTEX_PEERS=http://198.51.100.20:9000,http://198.51.100.30:9000
+  ```
+
+- **VPS 2 (IP `198.51.100.20`)**:
+  ```yaml
+  environment:
+    - VORTEX_NODE_ID=vps-2
+    - VORTEX_PEERS=http://198.51.100.10:9000,http://198.51.100.30:9000
+  ```
+
+- **VPS 3 (IP `198.51.100.30`)**:
+  ```yaml
+  environment:
+    - VORTEX_NODE_ID=vps-3
+    - VORTEX_PEERS=http://198.51.100.10:9000,http://198.51.100.20:9000
+  ```
+```
 
 ### 4.2. Implantação no Kubernetes (StatefulSet)
 

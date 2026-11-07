@@ -11,6 +11,7 @@ import {
   RestoreOptions,
 } from '../types/storage';
 import { replicationEngine } from './replicationEngine';
+import { AdminUser, authService } from './authService';
 
 const STORAGE_KEYS = {
   BUCKETS: 'vortexs3_buckets_v1',
@@ -319,52 +320,135 @@ class StorageEngine {
   private webhooks: BucketEventNotification[] = [];
   private accessLogs: AccessLogEntry[] = [];
   private listeners: (() => void)[] = [];
+  private currentUser: AdminUser | null = null;
 
   constructor() {
+    this.currentUser = authService.getCurrentUser();
     this.loadState();
+  }
+
+  public setUser(user: AdminUser | null) {
+    this.currentUser = user;
+    this.loadState();
+    this.notify();
+  }
+
+  private getKey(name: string): string {
+    const uid = this.currentUser?.id || 'guest';
+    return `vortexs3_${uid}_${name}_v2`;
+  }
+
+  private generateRootKey(): IAMAccessKey {
+    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return {
+      id: `iam-${Date.now()}-${randomSuffix.toLowerCase()}`,
+      accessKeyId: `VXAK${randomSuffix}ROOT`,
+      secretAccessKey: `vxs_${Math.random().toString(36).substring(2, 14)}${Math.random().toString(36).substring(2, 14)}`,
+      name: `Chave Root (${this.currentUser?.name || 'Administrador'})`,
+      createdAt: new Date().toISOString(),
+      permissions: 'admin',
+      allowedBuckets: ['*'],
+      status: 'active',
+      lastUsedAt: new Date().toISOString(),
+    };
   }
 
   private loadState() {
     try {
-      const storedBuckets = localStorage.getItem(STORAGE_KEYS.BUCKETS);
-      const storedObjects = localStorage.getItem(STORAGE_KEYS.OBJECTS);
-      const storedIAM = localStorage.getItem(STORAGE_KEYS.IAM_KEYS);
-      const storedLC = localStorage.getItem(STORAGE_KEYS.LIFECYCLE);
-      const storedWH = localStorage.getItem(STORAGE_KEYS.WEBHOOKS);
-      const storedLogs = localStorage.getItem(STORAGE_KEYS.ACCESS_LOGS);
+      const isDemo = this.currentUser?.email === 'admin@vortexs3.io';
 
-      this.buckets = storedBuckets ? JSON.parse(storedBuckets) : INITIAL_BUCKETS;
-      const loadedObjects: StorageObject[] = storedObjects ? JSON.parse(storedObjects) : INITIAL_OBJECTS;
-      this.objects = loadedObjects.map(obj => {
-        if (!obj.shards || obj.shards.length === 0) {
-          return {
-            ...obj,
-            shards: this.createErasureShards(obj.id, obj.sizeBytes),
-            erasureHealthy: true,
-            encryption: obj.encryption || 'AES256',
-            encryptionCipher: 'AES-256-GCM',
-          };
-        }
-        return obj;
-      });
-      this.iamKeys = storedIAM ? JSON.parse(storedIAM) : INITIAL_IAM_KEYS;
-      this.lifecycleRules = storedLC ? JSON.parse(storedLC) : INITIAL_LIFECYCLE;
-      this.webhooks = storedWH ? JSON.parse(storedWH) : INITIAL_WEBHOOKS;
-      this.accessLogs = storedLogs ? JSON.parse(storedLogs) : INITIAL_ACCESS_LOGS;
+      const storedBuckets = localStorage.getItem(this.getKey('buckets'));
+      const storedObjects = localStorage.getItem(this.getKey('objects'));
+      const storedIAM = localStorage.getItem(this.getKey('iam_keys'));
+      const storedLC = localStorage.getItem(this.getKey('lifecycle'));
+      const storedWH = localStorage.getItem(this.getKey('webhooks'));
+      const storedLogs = localStorage.getItem(this.getKey('access_logs'));
+
+      if (isDemo) {
+        this.buckets = storedBuckets ? JSON.parse(storedBuckets) : INITIAL_BUCKETS;
+        const loadedObjects: StorageObject[] = storedObjects ? JSON.parse(storedObjects) : INITIAL_OBJECTS;
+        this.objects = loadedObjects.map(obj => {
+          if (!obj.shards || obj.shards.length === 0) {
+            return {
+              ...obj,
+              shards: this.createErasureShards(obj.id, obj.sizeBytes),
+              erasureHealthy: true,
+              encryption: obj.encryption || 'AES256',
+              encryptionCipher: 'AES-256-GCM',
+            };
+          }
+          return obj;
+        });
+        this.iamKeys = storedIAM ? JSON.parse(storedIAM) : INITIAL_IAM_KEYS;
+        this.lifecycleRules = storedLC ? JSON.parse(storedLC) : INITIAL_LIFECYCLE;
+        this.webhooks = storedWH ? JSON.parse(storedWH) : INITIAL_WEBHOOKS;
+        this.accessLogs = storedLogs ? JSON.parse(storedLogs) : INITIAL_ACCESS_LOGS;
+      } else {
+        // Real user account: starts completely clean and dedicated
+        this.buckets = storedBuckets ? JSON.parse(storedBuckets) : [];
+        const loadedObjects: StorageObject[] = storedObjects ? JSON.parse(storedObjects) : [];
+        this.objects = loadedObjects.map(obj => {
+          if (!obj.shards || obj.shards.length === 0) {
+            return {
+              ...obj,
+              shards: this.createErasureShards(obj.id, obj.sizeBytes),
+              erasureHealthy: true,
+              encryption: obj.encryption || 'AES256',
+              encryptionCipher: 'AES-256-GCM',
+            };
+          }
+          return obj;
+        });
+        this.iamKeys = storedIAM ? JSON.parse(storedIAM) : [this.generateRootKey()];
+        this.lifecycleRules = storedLC ? JSON.parse(storedLC) : [];
+        this.webhooks = storedWH ? JSON.parse(storedWH) : [];
+        this.accessLogs = storedLogs ? JSON.parse(storedLogs) : [
+          {
+            id: `log-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            clientIp: '127.0.0.1',
+            method: 'AUTH',
+            bucket: '-',
+            key: '-',
+            httpStatus: 200,
+            bytesTransferred: 0,
+            durationMs: 1,
+            userAgent: `VortexConsole/1.0 (${this.currentUser?.name || 'Admin'})`,
+          }
+        ];
+      }
     } catch {
-      this.buckets = INITIAL_BUCKETS;
-      this.objects = INITIAL_OBJECTS.map(obj => ({
-        ...obj,
-        shards: this.createErasureShards(obj.id, obj.sizeBytes),
-        erasureHealthy: true,
-        encryption: obj.encryption || 'AES256',
-        encryptionCipher: 'AES-256-GCM',
-      }));
-      this.iamKeys = INITIAL_IAM_KEYS;
-      this.lifecycleRules = INITIAL_LIFECYCLE;
-      this.webhooks = INITIAL_WEBHOOKS;
-      this.accessLogs = INITIAL_ACCESS_LOGS;
+      this.buckets = [];
+      this.objects = [];
+      this.iamKeys = [this.generateRootKey()];
+      this.lifecycleRules = [];
+      this.webhooks = [];
+      this.accessLogs = [];
     }
+  }
+
+  public loadDemoData() {
+    this.buckets = [...INITIAL_BUCKETS];
+    this.objects = INITIAL_OBJECTS.map(obj => ({
+      ...obj,
+      shards: this.createErasureShards(obj.id, obj.sizeBytes),
+      erasureHealthy: true,
+      encryption: obj.encryption || 'AES256',
+      encryptionCipher: 'AES-256-GCM',
+    }));
+    this.iamKeys = [...INITIAL_IAM_KEYS];
+    this.lifecycleRules = [...INITIAL_LIFECYCLE];
+    this.webhooks = [...INITIAL_WEBHOOKS];
+    this.accessLogs = [...INITIAL_ACCESS_LOGS];
+    this.persist();
+  }
+
+  public clearAllData() {
+    this.buckets = [];
+    this.objects = [];
+    this.lifecycleRules = [];
+    this.webhooks = [];
+    this.persist();
   }
 
   public createErasureShards(objectId: string, sizeBytes: number): ObjectShard[] {
@@ -388,14 +472,21 @@ class StorageEngine {
 
   private persist() {
     try {
-      localStorage.setItem(STORAGE_KEYS.BUCKETS, JSON.stringify(this.buckets));
-      localStorage.setItem(STORAGE_KEYS.OBJECTS, JSON.stringify(this.objects));
-      localStorage.setItem(STORAGE_KEYS.IAM_KEYS, JSON.stringify(this.iamKeys));
-      localStorage.setItem(STORAGE_KEYS.LIFECYCLE, JSON.stringify(this.lifecycleRules));
-      localStorage.setItem(STORAGE_KEYS.WEBHOOKS, JSON.stringify(this.webhooks));
-      localStorage.setItem(STORAGE_KEYS.ACCESS_LOGS, JSON.stringify(this.accessLogs));
+      localStorage.setItem(this.getKey('buckets'), JSON.stringify(this.buckets));
+      localStorage.setItem(this.getKey('objects'), JSON.stringify(this.objects));
+      localStorage.setItem(this.getKey('iam_keys'), JSON.stringify(this.iamKeys));
+      localStorage.setItem(this.getKey('lifecycle'), JSON.stringify(this.lifecycleRules));
+      localStorage.setItem(this.getKey('webhooks'), JSON.stringify(this.webhooks));
+      localStorage.setItem(this.getKey('access_logs'), JSON.stringify(this.accessLogs));
     } catch (e) {
-      console.warn('Could not persist to localStorage', e);
+      console.warn('Could not persist to localStorage, attempting quota cleanup', e);
+      try {
+        const sanitizedObjects = this.objects.map(o => ({ ...o, dataUrl: undefined }));
+        localStorage.setItem(this.getKey('objects'), JSON.stringify(sanitizedObjects));
+        localStorage.setItem(this.getKey('access_logs'), JSON.stringify(this.accessLogs.slice(0, 10)));
+      } catch (e2) {
+        console.error('Critical localStorage persist failure', e2);
+      }
     }
     this.notify();
   }
@@ -561,19 +652,29 @@ class StorageEngine {
 
     if (params.fileOrContent instanceof File) {
       sizeBytes = params.fileOrContent.size;
-      dataUrl = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = () => resolve(undefined);
-        reader.readAsDataURL(params.fileOrContent as File);
-      });
+      // Protect localStorage quota: only generate dataUrl for small images (< 64KB)
+      if (sizeBytes < 65536 && params.fileOrContent.type.startsWith('image/')) {
+        try {
+          dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = () => resolve(undefined);
+            reader.readAsDataURL(params.fileOrContent as File);
+          });
+        } catch {
+          dataUrl = undefined;
+        }
+      }
       calculatedEtag = `"${Math.random().toString(36).substring(2, 14)}${Date.now().toString(36)}"`;
     } else if (params.fileOrContent instanceof Blob) {
       sizeBytes = params.fileOrContent.size;
       calculatedEtag = `"${Date.now().toString(36)}${Math.random().toString(36).substring(2, 10)}"`;
     } else {
-      sizeBytes = new Blob([params.fileOrContent]).size;
-      dataUrl = `data:text/plain;utf8,${encodeURIComponent(params.fileOrContent)}`;
+      const strContent = typeof params.fileOrContent === 'string' ? params.fileOrContent : '';
+      sizeBytes = new Blob([strContent]).size;
+      if (sizeBytes < 16384) {
+        dataUrl = `data:text/plain;utf8,${encodeURIComponent(strContent)}`;
+      }
       calculatedEtag = `"${Date.now().toString(36)}${Math.random().toString(36).substring(2, 10)}"`;
     }
 
@@ -667,6 +768,21 @@ class StorageEngine {
 
     // Notifica réplicas para propagar a exclusão
     replicationEngine.handleObjectDelete(bucketName, cleanKey);
+  }
+
+  public deletePrefix(bucketName: string, prefix: string): number {
+    const cleanPrefix = prefix.replace(/^\/+/, '');
+    const toDelete = this.objects.filter(o => o.bucketName === bucketName && o.key.startsWith(cleanPrefix));
+    let deletedCount = 0;
+    toDelete.forEach(o => {
+      try {
+        this.deleteObject(bucketName, o.key);
+        deletedCount++;
+      } catch (e) {
+        console.warn(`Failed to delete ${o.key}`, e);
+      }
+    });
+    return deletedCount;
   }
 
   // --- RESTAURAÇÃO DE BACKUP (DISASTER RECOVERY) ---
@@ -861,6 +977,188 @@ class StorageEngine {
   }
 
   // --- PRESIGNED URLS ---
+  // --- PUBLIC URLS & PRESIGNED URLS ---
+  public getPublicUrl(
+    bucketName: string,
+    key: string
+  ): {
+    directUrl: string;
+    shareUrl: string;
+    isBucketPublic: boolean;
+    accessType: 'private' | 'public-read' | 'public-read-write';
+    curlSnippet: string;
+  } {
+    const bucket = this.getBucket(bucketName) || this.findPublicBucket(bucketName);
+    const cleanKey = key.replace(/^\/+/, '');
+    const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost:3000';
+    const isBucketPublic = bucket ? (bucket.publicAccess === 'public-read' || bucket.publicAccess === 'public-read-write') : false;
+    const accessType = bucket?.publicAccess || 'private';
+
+    // Direct clean S3 standard URL
+    const directUrl = `${origin}/s3/${bucketName}/${cleanKey}`;
+    // Universal share URL that reliably loads in any iframe / browser query
+    const shareUrl = `${origin}/?public_bucket=${encodeURIComponent(bucketName)}&public_key=${encodeURIComponent(cleanKey)}`;
+    const curlSnippet = `curl -O "${directUrl}"`;
+
+    return {
+      directUrl,
+      shareUrl,
+      isBucketPublic,
+      accessType,
+      curlSnippet,
+    };
+  }
+
+  public findPublicBucket(bucketName: string): Bucket | undefined {
+    const memoryMatch = this.buckets.find(b => b.name === bucketName);
+    if (memoryMatch) return memoryMatch;
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('vortexs3_') && k.endsWith('_buckets_v2')) {
+            try {
+              const bList: Bucket[] = JSON.parse(localStorage.getItem(k) || '[]');
+              const match = bList.find(b => b.name === bucketName);
+              if (match) return match;
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return INITIAL_BUCKETS.find(b => b.name === bucketName);
+  }
+
+  public findPublicObject(bucketName: string, key: string): { bucket: Bucket; object: StorageObject } | null {
+    const cleanKey = decodeURIComponent(key).replace(/^\/+/, '');
+
+    // 1. Check in currently active memory
+    const currentBk = this.buckets.find(b => b.name === bucketName) || this.findPublicBucket(bucketName);
+    const currentObj = this.objects.find(o => o.bucketName === bucketName && o.key === cleanKey);
+    if (currentBk && currentObj) {
+      return { bucket: currentBk, object: currentObj };
+    }
+
+    // 2. Scan across localStorage (any user's cluster in this browser origin)
+    if (typeof localStorage !== 'undefined') {
+      try {
+        let foundBucket: Bucket | null = currentBk || null;
+        let foundObject: StorageObject | null = null;
+
+        if (!foundBucket) {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('vortexs3_') && k.endsWith('_buckets_v2')) {
+              try {
+                const bList: Bucket[] = JSON.parse(localStorage.getItem(k) || '[]');
+                const match = bList.find(b => b.name === bucketName);
+                if (match) {
+                  foundBucket = match;
+                  break;
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('vortexs3_') && k.endsWith('_objects_v2')) {
+            try {
+              const oList: StorageObject[] = JSON.parse(localStorage.getItem(k) || '[]');
+              const match = oList.find(o => o.bucketName === bucketName && o.key === cleanKey);
+              if (match) {
+                foundObject = match;
+                break;
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        if (foundBucket && foundObject) {
+          return { bucket: foundBucket, object: foundObject };
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 3. Fallback to INITIAL seeds
+    const initBk = INITIAL_BUCKETS.find(b => b.name === bucketName);
+    const initObj = INITIAL_OBJECTS.find(o => o.bucketName === bucketName && o.key === cleanKey);
+    if (initBk && initObj) {
+      return { bucket: initBk, object: initObj };
+    }
+
+    return null;
+  }
+
+  public toggleBucketPublicAccess(bucketName: string): Bucket {
+    const bucket = this.getBucket(bucketName);
+    if (!bucket) throw new Error(`Bucket "${bucketName}" não encontrado.`);
+
+    const nextAccess: Bucket['publicAccess'] =
+      bucket.publicAccess === 'private' ? 'public-read' : 'private';
+
+    this.updateBucketSettings(bucketName, { publicAccess: nextAccess });
+
+    this.logAccess({
+      clientIp: '127.0.0.1',
+      method: 'PUT',
+      bucket: bucketName,
+      key: '?policy',
+      httpStatus: 200,
+      bytesTransferred: 0,
+      durationMs: 8,
+      userAgent: 'VortexS3-Console/1.0',
+    });
+
+    return this.getBucket(bucketName)!;
+  }
+
+  public downloadStorageObject(object: StorageObject): void {
+    if (object.dataUrl) {
+      const a = document.createElement('a');
+      a.href = object.dataUrl;
+      a.download = object.key.split('/').pop() || 'objeto';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      const content = `[VortexS3 High-Performance Object Engine]\nBucket: ${object.bucketName}\nKey: ${object.key}\nETag: ${object.etag}\nSize: ${object.sizeBytes} bytes\nEncryption: ${object.encryption || 'AES256'}\nStorageClass: ${object.storageClass}\nLastModified: ${object.lastModified}\n\nThis payload is generated by VortexS3 cluster node for file download.`;
+      const blob = new Blob([content], { type: object.contentType || 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = object.key.split('/').pop() || 'objeto';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    this.logAccess({
+      clientIp: '127.0.0.1',
+      method: 'GET',
+      bucket: object.bucketName,
+      key: object.key,
+      httpStatus: 200,
+      bytesTransferred: object.sizeBytes,
+      durationMs: 14,
+      userAgent: 'VortexS3-BrowserDownload/1.0',
+    });
+  }
+
   public generatePresignedUrl(
     bucketName: string,
     key: string,
@@ -877,14 +1175,15 @@ class StorageEngine {
     const token = `v4sig-${Math.random().toString(36).substring(2, 16)}${Date.now().toString(36)}`;
     const expiresAt = new Date(Date.now() + duration * 1000).toISOString();
     const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost:3000';
-    const url = `${origin}/s3/${bucketName}/${encodeURIComponent(key)}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=${duration}&X-Amz-Signature=${token}`;
+    const cleanKey = key.replace(/^\/+/, '');
+    const url = `${origin}/?public_bucket=${encodeURIComponent(bucketName)}&public_key=${encodeURIComponent(cleanKey)}&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=${duration}&X-Amz-Signature=${token}`;
     const curlSnippet = `curl -X ${method} "${url}"`;
 
     this.logAccess({
       clientIp: '127.0.0.1',
       method,
       bucket: bucketName,
-      key,
+      key: cleanKey,
       httpStatus: 200,
       bytesTransferred: 0,
       durationMs: 6,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Database, Server, HardDrive, RefreshCw, Archive, KeyRound, Box, Plus, Terminal } from 'lucide-react';
 
-export type ActiveTab = 'overview' | 'buckets' | 'replication' | 'backups' | 'logs' | 'iam' | 'dockerhub' | 'metrics' | 'docs';
+export type ActiveTab = 'overview' | 'buckets' | 'replication' | 'backups' | 'logs' | 'iam' | 'dockerhub' | 'metrics' | 'docs' | 'production';
 
 interface NavbarProps {
   activeTab: ActiveTab;

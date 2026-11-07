@@ -20,9 +20,10 @@ Servidor de armazenamento de objetos leve, 100% compatível com a API S3 da AWS,
    - Implementação completa dos endpoints S3 standard (`GET`, `PUT`, `DELETE`, `HEAD` para Buckets e Objects).
    - Suporte a multipart uploads, presigned URLs temporárias com assinatura SHA256 HMAC, metadados customizados (`x-amz-meta-*`) e políticas de bucket.
    - Armazenamento em diretório particionado com integridade calculada por hash MD5/SHA256 (ETag compatível).
-2. **Motor de Replicação Automática de Alta Disponibilidade**:
-   - Registro de nós pares no cluster (nós locais e remotos).
-   - Barramento de replicação síncrona/assíncrona de eventos de escrita e exclusão.
+2. **Motor de Replicação Automática de Alta Disponibilidade (1 Nó por VPS + Réplicas Remotas)**:
+   - Padrão de implantação em produção: **1 nó isolado por máquina física/VPS**, evitando disputa interna de I/O em disco no mesmo host.
+   - Adição e orquestração de réplicas via Console Administrativo apontando para IP/FQDN de servidores remotos (`VORTEX_PEER_ENDPOINTS`).
+   - Barramento de replicação síncrona/assíncrona de eventos de escrita e exclusão via Raft.
    - Detecção de heartbeat de peers e fila de sincronização atrasada (catch-up queue) quando nós voltam a ficar online.
 3. **Sistema de Backups & Snapshots Automatizados**:
    - Políticas de backup agendadas (diário, semanal, contínuo).

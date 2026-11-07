@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vortexs3-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vortexs3-s3
+  namespace: vortexs3-system
+spec:
+  type: LoadBalancer
+  ports:
+    - name: s3-api
+      port: 9000
+      targetPort: 9000
+    - name: web-console
+      port: 9001
+      targetPort: 9001
+  selector:
+    app: vortexs3
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vortexs3-node
+  namespace: vortexs3-system
+spec:
+  serviceName: vortexs3-internal
+  replicas: 3
+  selector:
+    matchLabels:
+      app: vortexs3
+  template:
+    metadata:
+      labels:
+        app: vortexs3
+    spec:
+      containers:
+        - name: storage-server
+          image: delciomanico2003/vortexs3:v1.0.0
+          args:
+            - "-data=/data"
+            - "-address=:9000"
+            - "-console-address=:9001"
+            - "-peers=http://vortexs3-node-0.vortexs3-internal:9000,http://vortexs3-node-1.vortexs3-internal:9000,http://vortexs3-node-2.vortexs3-internal:9000"
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: storage-vol
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: storage-vol
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 250Gi

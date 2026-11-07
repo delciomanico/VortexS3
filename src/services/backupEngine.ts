@@ -1,6 +1,7 @@
 import { BackupJob, BackupArchive, RestoreOptions } from '../types/storage';
 import { storageEngine } from './storageEngine';
 import { replicationEngine } from './replicationEngine';
+import { AdminUser, authService } from './authService';
 
 const BACKUP_STORAGE_KEYS = {
   JOBS: 'vortexs3_backup_jobs_v1',
@@ -67,27 +68,53 @@ class BackupEngine {
   private jobs: BackupJob[] = [];
   private archives: BackupArchive[] = [];
   private listeners: (() => void)[] = [];
+  private currentUser: AdminUser | null = null;
 
   constructor() {
+    this.currentUser = authService.getCurrentUser();
     this.loadState();
+  }
+
+  public setUser(user: AdminUser | null) {
+    this.currentUser = user;
+    this.loadState();
+    this.notify();
+  }
+
+  private getKey(name: string): string {
+    const uid = this.currentUser?.id || 'guest';
+    return `vortexs3_bkp_${uid}_${name}_v2`;
   }
 
   private loadState() {
     try {
-      const storedJobs = localStorage.getItem(BACKUP_STORAGE_KEYS.JOBS);
-      const storedArchives = localStorage.getItem(BACKUP_STORAGE_KEYS.ARCHIVES);
-      this.jobs = storedJobs ? JSON.parse(storedJobs) : INITIAL_JOBS;
-      this.archives = storedArchives ? JSON.parse(storedArchives) : INITIAL_ARCHIVES;
+      const isDemo = this.currentUser?.email === 'admin@vortexs3.io';
+      const storedJobs = localStorage.getItem(this.getKey('jobs'));
+      const storedArchives = localStorage.getItem(this.getKey('archives'));
+
+      if (isDemo) {
+        this.jobs = storedJobs ? JSON.parse(storedJobs) : INITIAL_JOBS;
+        this.archives = storedArchives ? JSON.parse(storedArchives) : INITIAL_ARCHIVES;
+      } else {
+        this.jobs = storedJobs ? JSON.parse(storedJobs) : [];
+        this.archives = storedArchives ? JSON.parse(storedArchives) : [];
+      }
     } catch {
-      this.jobs = INITIAL_JOBS;
-      this.archives = INITIAL_ARCHIVES;
+      this.jobs = [];
+      this.archives = [];
     }
+  }
+
+  public loadDemoBackups() {
+    this.jobs = [...INITIAL_JOBS];
+    this.archives = [...INITIAL_ARCHIVES];
+    this.persist();
   }
 
   private persist() {
     try {
-      localStorage.setItem(BACKUP_STORAGE_KEYS.JOBS, JSON.stringify(this.jobs));
-      localStorage.setItem(BACKUP_STORAGE_KEYS.ARCHIVES, JSON.stringify(this.archives));
+      localStorage.setItem(this.getKey('jobs'), JSON.stringify(this.jobs));
+      localStorage.setItem(this.getKey('archives'), JSON.stringify(this.archives));
     } catch (e) {
       console.warn('Could not persist backup state', e);
     }

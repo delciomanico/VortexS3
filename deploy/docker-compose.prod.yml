@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.1
+    ports: ["80:80", "443:443"]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro", "traefik_certs:/letsencrypt"]
+    command:
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=admin@seudominio.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+
+  vortex-node1:
+    image: delciomanico2003/vortexs3:latest
+    environment:
+      - VORTEX_NODE_ID=node-1
+      - VORTEX_DATA_DIR=/data
+      - VORTEX_PEERS=http://vortex-node2:9000,http://vortex-node3:9000
+    volumes: [node1_storage:/data]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.s3.rule=Host(`s3.seudominio.com`)"
+      - "traefik.http.routers.s3.tls.certresolver=myresolver"
+      - "traefik.http.services.s3.loadbalancer.server.port=9000"
+
+  vortex-node2:
+    image: delciomanico2003/vortexs3:latest
+    environment:
+      - VORTEX_NODE_ID=node-2
+      - VORTEX_DATA_DIR=/data
+      - VORTEX_PEERS=http://vortex-node1:9000,http://vortex-node3:9000
+    volumes: [node2_storage:/data]
+
+  vortex-node3:
+    image: delciomanico2003/vortexs3:latest
+    environment:
+      - VORTEX_NODE_ID=node-3
+      - VORTEX_DATA_DIR=/data
+      - VORTEX_PEERS=http://vortex-node1:9000,http://vortex-node2:9000
+    volumes: [node3_storage:/data]
+
+volumes: { traefik_certs: {}, node1_storage: {}, node2_storage: {}, node3_storage: {} }

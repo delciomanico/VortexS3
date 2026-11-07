@@ -7,15 +7,15 @@ export interface AdminUser {
 }
 
 const AUTH_STORAGE_KEYS = {
-  CURRENT_USER: 'vortexs3_current_user_v1',
-  USERS_LIST: 'vortexs3_users_v1',
+  CURRENT_USER: 'vortexs3_current_user_v2',
+  USERS_LIST: 'vortexs3_users_v2',
 };
 
 const DEFAULT_USERS: { [email: string]: { user: AdminUser; passwordHash: string } } = {
   'admin@vortexs3.io': {
     user: {
-      id: 'usr-root-1',
-      name: 'Root Admin',
+      id: 'usr-root-demo',
+      name: 'Root Admin Demo',
       email: 'admin@vortexs3.io',
       role: 'superadmin',
       createdAt: '2026-10-20T10:00:00Z',
@@ -36,18 +36,28 @@ class AuthService {
   private loadState() {
     try {
       const storedUsers = localStorage.getItem(AUTH_STORAGE_KEYS.USERS_LIST);
-      this.users = storedUsers ? JSON.parse(storedUsers) : DEFAULT_USERS;
+      if (storedUsers) {
+        this.users = { ...DEFAULT_USERS, ...JSON.parse(storedUsers) };
+      } else {
+        this.users = { ...DEFAULT_USERS };
+      }
 
       const storedCurrent = localStorage.getItem(AUTH_STORAGE_KEYS.CURRENT_USER);
       if (storedCurrent) {
-        this.currentUser = JSON.parse(storedCurrent);
+        const parsed = JSON.parse(storedCurrent);
+        // Verify user still exists in users map
+        if (parsed?.email && this.users[parsed.email.toLowerCase()]) {
+          this.currentUser = this.users[parsed.email.toLowerCase()].user;
+        } else {
+          this.currentUser = parsed;
+        }
       } else {
-        // Default logged-in user for seamless first load, can be logged out anytime
-        this.currentUser = this.users['admin@vortexs3.io']?.user || null;
+        // When no active session exists, start in logged-out state (show Login/Signup screen)
+        this.currentUser = null;
       }
     } catch {
-      this.users = DEFAULT_USERS;
-      this.currentUser = DEFAULT_USERS['admin@vortexs3.io'].user;
+      this.users = { ...DEFAULT_USERS };
+      this.currentUser = null;
     }
   }
 
@@ -82,12 +92,19 @@ class AuthService {
 
   public login(email: string, password: string): AdminUser {
     const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      throw new Error('Informe seu endereço de email.');
+    }
+    if (!password) {
+      throw new Error('Informe sua senha.');
+    }
+
     const entry = this.users[cleanEmail];
     if (!entry) {
-      throw new Error('Nenhuma conta encontrada com este email.');
+      throw new Error('Nenhuma conta encontrada com este email. Verifique a digitação ou cadastre-se.');
     }
     if (entry.passwordHash !== password) {
-      throw new Error('Senha incorreta.');
+      throw new Error('Senha incorreta. Tente novamente.');
     }
 
     this.currentUser = entry.user;
@@ -98,17 +115,17 @@ class AuthService {
   public signup(name: string, email: string, password: string): AdminUser {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
-      throw new Error('Informe um email válido.');
+      throw new Error('Informe um email corporativo válido.');
     }
     if (password.length < 6) {
       throw new Error('A senha deve possuir pelo menos 6 caracteres.');
     }
     if (this.users[cleanEmail]) {
-      throw new Error('Já existe uma conta cadastrada com este email.');
+      throw new Error('Já existe uma conta cadastrada com este email. Faça login na aba Entrar.');
     }
 
     const newUser: AdminUser = {
-      id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       name: name.trim() || cleanEmail.split('@')[0],
       email: cleanEmail,
       role: 'admin',
